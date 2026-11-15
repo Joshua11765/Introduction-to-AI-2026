@@ -1,0 +1,239 @@
+# Cell 1: Import required libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+print("✅ Libraries imported successfully!")
+
+  # Cell 2: Load the dataset
+df = pd.read_csv('healthcare-dataset-stroke-data.csv')
+
+print("Dataset loaded successfully")
+print("Shape:", df.shape)
+print("\nFirst few rows:")
+df.head()
+
+  # Cell 3: Data types and column information
+print("Column names and data types:")
+print(df.dtypes)
+print("\nTotal columns:", len(df.columns))
+
+  # Cell 4: Check for missing values
+print("Missing values per column:")
+print(df.isnull().sum())
+print("\nPercentage of missing values:")
+print((df.isnull().sum() / len(df) * 100).round(2))
+
+  # Cell 5: Check class distribution of target variable 'stroke'
+print("Target variable 'stroke' distribution:")
+print(df['stroke'].value_counts())
+print("\nPercentage:")
+print(df['stroke'].value_counts(normalize=True).round(4) * 100)
+
+# Cell 6: Visualize the class imbalance
+plt.figure(figsize=(6, 4))
+sns.countplot(x='stroke', data=df, palette='Set2')
+plt.title('Distribution of Stroke Cases (Class Imbalance)')
+plt.xlabel('Stroke (0 = No, 1 = Yes)')
+plt.ylabel('Count')
+plt.show()
+
+  # Cell 7: Handle missing values in 'bmi' column
+print("Before imputation:")
+print(f"Missing values in 'bmi': {df['bmi'].isnull().sum()}")
+
+# Impute with median (robust to outliers)
+bmi_median = df['bmi'].median()
+df['bmi'].fillna(bmi_median, inplace=True)
+
+print(f"\nMedian BMI used for imputation: {bmi_median:.2f}")
+print("After imputation:")
+print(f"Missing values in 'bmi': {df['bmi'].isnull().sum()}")
+
+# Cell 8: Drop irrelevant 'id' column
+print("Before dropping 'id':")
+print(df.columns.tolist())
+
+df.drop('id', axis=1, inplace=True)
+
+print("\nAfter dropping 'id':")
+print(df.columns.tolist())
+print(f"\nNew shape: {df.shape}")
+
+# Cell 9: Encode categorical variables (one-hot encoding)
+print("Categorical columns before encoding:")
+cat_cols = df.select_dtypes(include=['object']).columns.tolist()
+print(cat_cols)
+
+# One-hot encode
+df_encoded = pd.get_dummies(df, columns=cat_cols, drop_first=True)
+
+print(f"\nOriginal shape: {df.shape}")
+print(f"Encoded shape: {df_encoded.shape}")
+print("\nNew columns after encoding:")
+print(df_encoded.columns.tolist())
+print("\nFirst 3 rows of encoded data:")
+df_encoded.head(3)
+
+# Cell 10: Separate features (X) and target (y)
+X = df_encoded.drop('stroke', axis=1)
+y = df_encoded['stroke']
+
+print(f"Features (X) shape: {X.shape}")
+print(f"Target (y) shape: {y.shape}")
+print(f"\nTarget distribution:")
+print(y.value_counts())
+
+# Cell 11: Split into training and testing sets
+from sklearn.model_selection import train_test_split
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+print("Split complete!")
+print(f"X_train shape: {X_train.shape}")
+print(f"X_test shape: {X_test.shape}")
+print(f"y_train shape: {y_train.shape}")
+print(f"y_test shape: {y_test.shape}")
+print("\nTraining set class distribution:")
+print(y_train.value_counts())
+print("\nTest set class distribution:")
+print(y_test.value_counts())
+
+# Cell 12: Feature scaling with StandardScaler
+from sklearn.preprocessing import StandardScaler
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+print("Scaling complete!")
+print(f"\nMean of scaled training data (should be ~0): {X_train_scaled.mean():.4f}")
+print(f"Std of scaled training data (should be ~1): {X_train_scaled.std():.4f}")
+
+# Cell 13: Handle class imbalance with SMOTE
+# Install if needed (usually pre-installed in Colab)
+!pip install imbalanced-learn -q
+
+from imblearn.over_sampling import SMOTE
+
+print("Before SMOTE (training set):")
+print(y_train.value_counts())
+
+# Apply SMOTE to training data ONLY
+smote = SMOTE(random_state=42)
+X_train_resampled, y_train_resampled = smote.fit_resample(X_train_scaled, y_train)
+
+print("\nAfter SMOTE (training set):")
+print(y_train_resampled.value_counts())
+print(f"\nX_train_resampled shape: {X_train_resampled.shape}")
+
+# Cell 14: Train Logistic Regression model
+from sklearn.linear_model import LogisticRegression
+
+# Initialize the model
+model = LogisticRegression(random_state=42, max_iter=1000)
+
+# Train the model on the SMOTE-resampled training data
+model.fit(X_train_resampled, y_train_resampled)
+
+print("Model training complete!")
+print("Model Coefficients (weights assigned to each feature):")
+# Let's show the coefficients to see which features impact the prediction most
+coefficients = pd.DataFrame({'Feature': X.columns, 'Coefficient': model.coef_[0]})
+print(coefficients.sort_values(by='Coefficient', ascending=False).head())
+
+  # Cell 15: Make predictions and evaluate initial model
+from sklearn.metrics import confusion_matrix, classification_report, accuracy_score
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Make predictions
+y_pred = model.predict(X_test_scaled)
+
+# Print evaluation metrics
+print("Initial Model Accuracy:", round(accuracy_score(y_test, y_pred) * 100, 2), "%")
+print("\nClassification Report:")
+print(classification_report(y_test, y_pred))
+
+# Plot Confusion Matrix
+cm = confusion_matrix(y_test, y_pred)
+plt.figure(figsize=(6, 4))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+            xticklabels=['No Stroke', 'Stroke'],
+            yticklabels=['No Stroke', 'Stroke'])
+plt.title('Confusion Matrix - Initial Model')
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.show()
+
+  # Cell 16: Hyperparameter tuning with GridSearchCV
+from sklearn.model_selection import GridSearchCV
+
+# Define the grid of parameters to test
+param_grid = {
+    'C': [0.001, 0.01, 0.1, 1, 10, 100], # Regularization strength
+    'solver': ['liblinear', 'lbfgs'],
+    'penalty': ['l2']
+}
+
+# Set up GridSearchCV, focusing on 'recall' because we want to catch strokes!
+grid_search = GridSearchCV(
+    LogisticRegression(random_state=42, max_iter=1000),
+    param_grid,
+    cv=5,
+    scoring='recall',
+    n_jobs=-1
+)
+
+print("Running GridSearchCV... (this may take a minute)")
+grid_search.fit(X_train_resampled, y_train_resampled)
+
+print("\nGridSearch complete!")
+print("Best parameters found:", grid_search.best_params_)
+print(f"Best cross-validation recall: {grid_search.best_score_:.4f}")
+
+  # Cell 17: Train and evaluate the refined model
+# Get the best model from the grid search
+best_model = grid_search.best_estimator_
+
+# Make predictions with the refined model
+y_pred_refined = best_model.predict(X_test_scaled)
+
+# Evaluate refined model
+print("Refined Model Accuracy:", round(accuracy_score(y_test, y_pred_refined) * 100, 2), "%")
+print("\nRefined Model Classification Report:")
+print(classification_report(y_test, y_pred_refined))
+
+# Plot Refined Confusion Matrix
+cm_refined = confusion_matrix(y_test, y_pred_refined)
+plt.figure(figsize=(6, 4))
+sns.heatmap(cm_refined, annot=True, fmt='d', cmap='Greens',
+            xticklabels=['No Stroke', 'Stroke'],
+            yticklabels=['No Stroke', 'Stroke'])
+plt.title('Confusion Matrix - Refined Model')
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.show()
+
+  # Cell 18: Compare initial vs refined model
+# Extract metrics for the comparison
+initial_report = classification_report(y_test, y_pred, output_dict=True)
+refined_report = classification_report(y_test, y_pred_refined, output_dict=True)
+
+comparison = pd.DataFrame({
+    'Metric': ['Accuracy', 'Recall (Stroke)', 'Precision (Stroke)'],
+    'Initial Model': [
+        round(accuracy_score(y_test, y_pred), 4),
+        round(initial_report['1']['recall'], 4),
+        round(initial_report['1']['precision'], 4)
+    ],
+    'Refined Model': [
+        round(accuracy_score(y_test, y_pred_refined), 4),
+        round(refined_report['1']['recall'], 4),
+        round(refined_report['1']['precision'], 4)
+    ]
+})
+print(comparison.to_string(index=False))
